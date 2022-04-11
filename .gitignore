@@ -1,0 +1,6 @@
+!.gitignore
+.settings
+.project
+.classpath
+.pydevproject
+bin
