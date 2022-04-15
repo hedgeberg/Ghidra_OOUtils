@@ -1,4 +1,4 @@
-package ooutils.object.vtable;
+package ghidra.plugins.ooutils.object.vtable;
 
 import java.lang.String;
 
@@ -35,22 +35,23 @@ public class OOUtilsVtable {
 	Program pgm;
 	
 	
-	public OOUtilsVtable(Address start, int numPtrs, String classPath, String vtableTypeName, Program pgm){
+	public OOUtilsVtable(Address start, int numPtrs, CategoryPath catPath, String vtableTypeName, Program pgm){
 		//Assumes that a vtable that has been created by OOUtils already exists for this type. 
 		//If it doesn't, you should call newAutoVtable instead. 
 		vtableStartAddress = start;
 		this.dtm = pgm.getDataTypeManager();
 		this.vtableTypeName = vtableTypeName;
-		this.classPath = classPath;
-		this.catPath = new CategoryPath(classPath);
+		this.catPath = catPath;
 		this.listing = pgm.getListing();
 		this.rm = pgm.getReferenceManager();
 		this.ptrWidth = dtm.getPointer(new FunctionDefinitionDataType("funcname")).getLength();
 		this.numPtrs = numPtrs;
 		
 		this.vtableDataType = dtm.getDataType(catPath, vtableTypeName);
-		//this.vtableDataType = (StructureDataType) listing.getDataAt(start).getDataType();
-		//this.vtableStruct = (Structure) listing.getDataAt(start);
+	}
+	
+	public DataType getVtableDataType() {
+		return vtableDataType;
 	}
 	
 	public Boolean applyAtAddress() {
@@ -76,20 +77,21 @@ public class OOUtilsVtable {
 		vtableDataType.replaceWith(newDataType);
 	}
 	
-	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, String classPath,
+	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, CategoryPath parentCatPath,
 			String className, Program pgm) {
+		CategoryPath catPath = new CategoryPath(parentCatPath, className);
 		//create a new Ghidra data type for this vtable and add it to dtm:
 		DataTypeManager dtm = pgm.getDataTypeManager();
 		int PTR_WIDTH = dtm.getPointer(new FunctionDefinitionDataType("funcname")).getLength();
-		CategoryPath dtCategoryPath = new CategoryPath("/OOUtils_Managed" + classPath + "/" + className);
+		//CategoryPath dtCategoryPath = new CategoryPath("/OOUtils_Managed" + classPath + "/" + className);
 		int vtLength = PTR_WIDTH * numPtrs;
 		//TODO: increment vftable numbers?
 		String vtableTypeName = "vftable";
-		StructureDataType vtableStruct = new StructureDataType(dtCategoryPath, vtableTypeName, vtLength, dtm);
+		StructureDataType vtableStruct = new StructureDataType(catPath, vtableTypeName, vtLength, dtm);
 		dtm.addDataType(vtableStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
 		
 		//Once that's been added, we're safe to actually construct our class
-		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, numPtrs, "/OOUtils_Managed" + classPath + "/" + className, 
+		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, numPtrs, catPath, 
 				vtableTypeName, pgm);
 		//Before returning, we need to:
 		//  -make funcptrs for all the slots
