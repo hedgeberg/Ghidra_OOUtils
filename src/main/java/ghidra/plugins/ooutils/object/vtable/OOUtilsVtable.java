@@ -75,6 +75,11 @@ public class OOUtilsVtable {
 		} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 			Msg.warn(this, String.format("Encountered something weird for class %s, slot# %d", path.getClassName(), index));
 		}
+		try {
+			slotFunc.setCallingConvention("__thiscall");
+		} catch (InvalidInputException e) {
+			Msg.warn(this, String.format("Could not convert to __thiscall for class %s, slot# %d", path.getClassName(), index));
+		}
 		return true;
 	}
 	

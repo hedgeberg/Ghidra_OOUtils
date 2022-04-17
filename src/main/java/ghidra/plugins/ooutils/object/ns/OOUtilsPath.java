@@ -4,7 +4,10 @@ import ghidra.program.model.listing.GhidraClass;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.symbol.Symbol;
 import ghidra.util.exception.InvalidInputException;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.plugins.ooutils.utils.Helpers;
 import ghidra.app.util.NamespaceUtils;
@@ -26,6 +29,13 @@ public class OOUtilsPath {
 		this.className = nsPieces.lastElement();
 		this.nsPieces.removeElementAt(this.nsPieces.size() - 1);
 		this.nsFullName = String.join("::", this.nsPieces);
+	}
+	
+	public static OOUtilsPath fromVtableAddress(Address vtableStartAddr, Program pgm) {
+		SymbolTable st = pgm.getSymbolTable();
+		Symbol vtableSymbol = st.getPrimarySymbol(vtableStartAddr);
+		String classNsStr = vtableSymbol.getParentNamespace().getName();
+		return new OOUtilsPath(classNsStr, pgm);
 	}
 	
 	public void ensureParentNamespacePath() throws InvalidInputException {

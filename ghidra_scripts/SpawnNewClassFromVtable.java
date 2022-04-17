@@ -1,6 +1,6 @@
 //
-//@author 
-//@category 
+//@author hedgeberg
+//@category OOUtils
 //@keybinding
 //@menupath
 //@toolbar
@@ -17,9 +17,6 @@ public class SpawnNewClassFromVtable extends GhidraScript {
 	protected void run() throws Exception {
 		String classNameCombined = askString("Class Name", "What should the new class be named?");
 		int vtableLen = askInt("Vtable Length", "How many entries in the new class?");
-		//String[] splitOut = Helpers.splitOutClassFromNamespace(classNameCombined);
-		//Namespace ns = Helpers.resolveStringToNamespace(splitOut[1], currentProgram);
-		//String className = splitOut[0];
 		OOUtilsPath newObjPath = new OOUtilsPath(classNameCombined, currentProgram);
 		newObjPath.ensureParentNamespacePath();
 		OOUtilsClass newClass = OOUtilsClass.newAutoClassFromVtable(currentAddress,

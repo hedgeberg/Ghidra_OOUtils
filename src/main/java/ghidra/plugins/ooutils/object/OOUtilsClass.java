@@ -75,7 +75,8 @@ public class OOUtilsClass {
 		DataTypeManager dtm = pgm.getDataTypeManager();
 		SymbolManager sm = (SymbolManager) pgm.getSymbolTable();
 		GhidraClass newGhidraClass = sm.createClass(ns, className, SourceType.USER_DEFINED);
-		sm.createLabel(newVtable.vtableStartAddress, newVtable.vtableTypeName, newGhidraClass, SourceType.USER_DEFINED);
+		sm.createLabel(newVtable.vtableStartAddress, newVtable.vtableTypeName, newGhidraClass,
+				SourceType.USER_DEFINED).setPrimary();
 		DataType vtableType = newVtable.getVtableDataType();
 		StructureDataType newClassStruct = new StructureDataType(catPath, className, Helpers.getArchFuncPtrSize(pgm)*2);
 		newClassStruct.replaceAtOffset(0, dtm.getPointer(vtableType), dtm.getPointer(vtableType).getLength(), "_vtbl", "");
