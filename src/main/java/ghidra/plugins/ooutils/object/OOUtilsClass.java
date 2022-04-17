@@ -2,6 +2,7 @@ package ghidra.plugins.ooutils.object;
 
 import ghidra.plugins.ooutils.object.vtable.OOUtilsVtable;
 import ghidra.plugins.ooutils.utils.Helpers;
+import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataTypeManager;
@@ -26,29 +27,27 @@ public class OOUtilsClass {
 	DataTypeManager dtm;
 	GhidraClass classNs;
 	Program pgm;
+	OOUtilsPath path;
 	
+	//public OOUtilsClass(Namespace ns, String className, Program pgm){
+
 	
-	public OOUtilsClass(Namespace ns, String className, Program pgm){
+	public OOUtilsClass(OOUtilsPath path, Program pgm){
 		this.dtm = pgm.getDataTypeManager();
 		this.listing = pgm.getListing();
 		this.sm = (SymbolManager) pgm.getSymbolTable();
+		this.path = path;
 		//TODO: need a way to verify this is actually an OOUtilsClass and not just a manually created class
-		//TODO: split className into namespace & name
-		this.classNs = (GhidraClass) sm.getNamespace(className, ns);
+		this.classNs = path.getClassNamespace();
 	}
 	
-	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, Namespace ns, String className, 
+	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, OOUtilsPath path,
 			Program pgm) throws DuplicateNameException, InvalidInputException {
-		CategoryPath catPath;
-		if(ns != null) {
-			catPath = new CategoryPath("/OOUtils_Managed" + Helpers.nsPathToSlashPath(ns.getName()));
-
-		} else {
-			catPath = new CategoryPath("/OOUtils_Managed");
-		}
+		CategoryPath catPath = path.getContainingCategoryPath();
+		Namespace ns = path.getParentNamespace();
+		String className = path.getClassName();
 		//TODO: a class for storing the class name & paths? feels useful here considering gross path logic.
-		OOUtilsVtable newVtable = OOUtilsVtable.newAutoVtable(vtableStart, numVtableMembers, catPath, 
-				className, pgm);
+		OOUtilsVtable newVtable = OOUtilsVtable.newAutoVtable(vtableStart, numVtableMembers, path, pgm);
 		if(newVtable == null) {
 			Msg.error(OOUtilsClass.class, "newAutoClass failed to get a valid vtable");
 			return null;
@@ -59,10 +58,10 @@ public class OOUtilsClass {
 		GhidraClass newGhidraClass = sm.createClass(ns, className, SourceType.USER_DEFINED);
 		sm.createLabel(newVtable.vtableStartAddress, newVtable.vtableTypeName, newGhidraClass, SourceType.USER_DEFINED);
 		DataType vtableType = newVtable.getVtableDataType();
-		StructureDataType newClassStruct = new StructureDataType(catPath, className, Helpers.getArchFuncPtrSize(pgm));
-		newClassStruct.replaceAtOffset(0, dtm.getPointer(vtableType), vtableType.getLength() * 2, "_vtbl", "");
+		StructureDataType newClassStruct = new StructureDataType(catPath, className, Helpers.getArchFuncPtrSize(pgm)*2);
+		newClassStruct.replaceAtOffset(0, dtm.getPointer(vtableType), dtm.getPointer(vtableType).getLength(), "_vtbl", "");
 		dtm.addDataType(newClassStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
-		OOUtilsClass newClass = new OOUtilsClass(ns, className, pgm);
+		OOUtilsClass newClass = new OOUtilsClass(path, pgm);
 		return newClass;
 	}
 }

@@ -17,6 +17,8 @@ import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.util.Msg;
 
+import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
+
 public class OOUtilsVtable {
 	//static int PTR_WIDTH = 4; //TODO: fetch this from lang spec
 	
@@ -25,29 +27,36 @@ public class OOUtilsVtable {
 	
 	int numPtrs;
 	int ptrWidth;
-	String classPath;
-	CategoryPath catPath;
 	DataType vtableDataType;
 	Structure vtableStruct;
 	DataTypeManager dtm;
 	Listing listing;
 	ReferenceManager rm;
 	Program pgm;
+	OOUtilsPath path;
 	
-	
-	public OOUtilsVtable(Address start, int numPtrs, CategoryPath catPath, String vtableTypeName, Program pgm){
+	public OOUtilsVtable(Address start, int numPtrs, OOUtilsPath path, Program pgm){
 		//Assumes that a vtable that has been created by OOUtils already exists for this type. 
 		//If it doesn't, you should call newAutoVtable instead. 
 		vtableStartAddress = start;
 		this.dtm = pgm.getDataTypeManager();
-		this.vtableTypeName = vtableTypeName;
-		this.catPath = catPath;
+		this.path = path;
 		this.listing = pgm.getListing();
 		this.rm = pgm.getReferenceManager();
 		this.ptrWidth = dtm.getPointer(new FunctionDefinitionDataType("funcname")).getLength();
 		this.numPtrs = numPtrs;
-		
-		this.vtableDataType = dtm.getDataType(catPath, vtableTypeName);
+		this.vtableTypeName = "vftable"; //TODO: Don't hardcode this -- blocks support for multi-vtable structs.
+		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
+	}
+	
+	public Boolean tryClaimSingleSlot(int index) {
+		return false;
+	}
+	
+	public void claimSlots() {
+		for (int i = 0; i < numPtrs; i++) {
+			tryClaimSingleSlot(i);
+		}
 	}
 	
 	public DataType getVtableDataType() {
@@ -69,7 +78,7 @@ public class OOUtilsVtable {
 		for(int slot = 0; slot < numPtrs; slot++) {
 			int offset = slot * ptrWidth;
 			String slotName = String.format("slot%d", slot);
-			FunctionDefinitionDataType slotFuncDef = new FunctionDefinitionDataType(catPath, slotName);
+			FunctionDefinitionDataType slotFuncDef = new FunctionDefinitionDataType(path.getClassStructCategoryPath(), slotName);
 			dtm.addDataType(slotFuncDef, DataTypeConflictHandler.DEFAULT_HANDLER);
 			DataType slotDataType = dtm.getPointer(slotFuncDef);
 			newDataType.replaceAtOffset(offset, slotDataType, slotDataType.getLength(), slotName, "");
@@ -77,9 +86,8 @@ public class OOUtilsVtable {
 		vtableDataType.replaceWith(newDataType);
 	}
 	
-	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, CategoryPath parentCatPath,
-			String className, Program pgm) {
-		CategoryPath catPath = new CategoryPath(parentCatPath, className);
+	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, OOUtilsPath path, Program pgm) {
+		CategoryPath catPath = path.getClassStructCategoryPath();
 		//create a new Ghidra data type for this vtable and add it to dtm:
 		DataTypeManager dtm = pgm.getDataTypeManager();
 		int PTR_WIDTH = dtm.getPointer(new FunctionDefinitionDataType("funcname")).getLength();
@@ -91,8 +99,7 @@ public class OOUtilsVtable {
 		dtm.addDataType(vtableStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
 		
 		//Once that's been added, we're safe to actually construct our class
-		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, numPtrs, catPath, 
-				vtableTypeName, pgm);
+		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, numPtrs, path, pgm);
 		//Before returning, we need to:
 		//  -make funcptrs for all the slots
 		//  -name all the slots
