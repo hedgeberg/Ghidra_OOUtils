@@ -2,15 +2,29 @@ package ghidra.plugins.ooutils.utils;
 
 import java.lang.String;
 import java.util.Arrays;
+import java.util.Vector;
 
 import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.Namespace;
+//import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.program.model.symbol.Reference;
 
 public class Helpers {
 	public static int getArchFuncPtrSize(Program pgm) {
 		return pgm.getDataTypeManager().getPointer(new FunctionDefinitionDataType("funcname")).getLength();
+	}
+	
+	public static Vector<Reference> getNonentryMemoryReferencesToFunction(Function func, Program pgm) {
+		Vector<Reference> refs = new Vector<Reference>();
+		for (Reference currentRef : pgm.getReferenceManager().getReferencesTo(func.getEntryPoint())) {
+			if(currentRef.isMemoryReference() && !currentRef.isEntryPointReference()) {
+				refs.add(currentRef);
+			}
+		}
+		return refs;
 	}
 	
 	public static String[] splitUpNamespaceString(String ns_str) {

@@ -2,6 +2,9 @@ package ghidra.plugins.ooutils.object;
 
 import ghidra.plugins.ooutils.object.vtable.OOUtilsVtable;
 import ghidra.plugins.ooutils.utils.Helpers;
+
+import java.util.List;
+
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 
 import ghidra.program.model.address.Address;
@@ -15,6 +18,8 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.database.symbol.SymbolManager;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.listing.GhidraClass;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
@@ -22,12 +27,13 @@ import ghidra.util.exception.InvalidInputException;
 
 public class OOUtilsClass {
 	
-	SymbolManager sm;
+	SymbolTable st;
 	Listing listing;
 	DataTypeManager dtm;
 	GhidraClass classNs;
 	Program pgm;
 	OOUtilsPath path;
+	OOUtilsVtable vt;
 	
 	//public OOUtilsClass(Namespace ns, String className, Program pgm){
 
@@ -35,10 +41,23 @@ public class OOUtilsClass {
 	public OOUtilsClass(OOUtilsPath path, Program pgm){
 		this.dtm = pgm.getDataTypeManager();
 		this.listing = pgm.getListing();
-		this.sm = (SymbolManager) pgm.getSymbolTable();
+		this.st = pgm.getSymbolTable();
 		this.path = path;
 		//TODO: need a way to verify this is actually an OOUtilsClass and not just a manually created class
 		this.classNs = path.getClassNamespace();
+		List<Symbol> vftableSymbols = st.getSymbols("vftable", classNs);
+		//TODO: actually handle multiple vtables for a single class
+		assert(vftableSymbols.size() == 1);
+		Symbol vtableSymbol = vftableSymbols.get(0);
+		this.vt = new OOUtilsVtable(vtableSymbol.getAddress(), path, pgm);
+	}
+	
+	public void tryClaimVtableSlots() {
+		vt.claimSlots();
+	}
+	
+	public String getName() {
+		return path.getClassNsString();
 	}
 	
 	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, OOUtilsPath path,

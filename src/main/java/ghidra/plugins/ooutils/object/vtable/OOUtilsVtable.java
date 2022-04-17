@@ -1,6 +1,7 @@
 package ghidra.plugins.ooutils.object.vtable;
 
 import java.lang.String;
+import java.util.Vector;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
@@ -11,16 +12,22 @@ import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataTypeConflictHandler;
 import ghidra.program.model.data.Structure;
+import ghidra.program.model.listing.CircularDependencyException;
+import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.Msg;
-
+import ghidra.util.exception.DuplicateNameException;
+import ghidra.util.exception.InvalidInputException;
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
+import ghidra.plugins.ooutils.utils.Helpers;
 
 public class OOUtilsVtable {
-	//static int PTR_WIDTH = 4; //TODO: fetch this from lang spec
 	
 	public Address vtableStartAddress;
 	public String vtableTypeName;
@@ -32,31 +39,65 @@ public class OOUtilsVtable {
 	DataTypeManager dtm;
 	Listing listing;
 	ReferenceManager rm;
+	SymbolTable st;
 	Program pgm;
 	OOUtilsPath path;
+	Data vtableInstance;
 	
-	public OOUtilsVtable(Address start, int numPtrs, OOUtilsPath path, Program pgm){
+	public OOUtilsVtable(Address start, OOUtilsPath path, Program pgm){
 		//Assumes that a vtable that has been created by OOUtils already exists for this type. 
 		//If it doesn't, you should call newAutoVtable instead. 
 		vtableStartAddress = start;
+		this.pgm = pgm;
 		this.dtm = pgm.getDataTypeManager();
 		this.path = path;
 		this.listing = pgm.getListing();
 		this.rm = pgm.getReferenceManager();
+		this.st = pgm.getSymbolTable();
 		this.ptrWidth = dtm.getPointer(new FunctionDefinitionDataType("funcname")).getLength();
-		this.numPtrs = numPtrs;
 		this.vtableTypeName = "vftable"; //TODO: Don't hardcode this -- blocks support for multi-vtable structs.
 		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
+		this.vtableInstance = listing.getDataAt(vtableStartAddress);
+		this.numPtrs = vtableDataType.getLength()/ptrWidth;
 	}
 	
 	public Boolean tryClaimSingleSlot(int index) {
-		return false;
+		Function slotFunc = getSlotReferencedFunction(index);
+		//Address slotPtrDest = getSlotReferencedAddress(index);
+		Vector<Reference> refsTo = Helpers.getNonentryMemoryReferencesToFunction(slotFunc, pgm);
+		int refCount = refsTo.size();
+		if(refCount != 1) {
+			//This function is pointed to by more than just our vtable -- meaning we can't assume ownership
+			return false;
+		}
+		try {
+			slotFunc.setParentNamespace(path.getClassNamespace());
+		} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
+			Msg.warn(this, String.format("Encountered something weird for class %s, slot# %d", path.getClassName(), index));
+		}
+		return true;
+	}
+	
+	public Address getSlotReferencedAddress(int slotNumber) {
+		Data slotInstance = vtableInstance.getComponent(slotNumber);
+		Reference[] slotRefArray = slotInstance.getReferencesFrom();
+		assert(slotRefArray.length == 1);
+		Address toAddr = slotRefArray[0].getToAddress();
+		return toAddr;
+	}
+	
+	public Function getSlotReferencedFunction(int slotNumber) {
+		return listing.getFunctionAt(getSlotReferencedAddress(slotNumber));
 	}
 	
 	public void claimSlots() {
+		int successes = 0;
 		for (int i = 0; i < numPtrs; i++) {
-			tryClaimSingleSlot(i);
+			if(tryClaimSingleSlot(i)) {
+				successes += 1;
+			}
 		}
+		Msg.info(this, String.format("Successfully claimed ownership of %d funcs for class: %s", successes, path.getClassName()));
 	}
 	
 	public DataType getVtableDataType() {
@@ -70,6 +111,7 @@ public class OOUtilsVtable {
 			Msg.error(this, "Could not spawn new Vtable at the desired location");
 			return false;
 		}
+		vtableInstance = listing.getDataAt(vtableStartAddress);
 		return true;
 	}
 	
@@ -99,7 +141,7 @@ public class OOUtilsVtable {
 		dtm.addDataType(vtableStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
 		
 		//Once that's been added, we're safe to actually construct our class
-		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, numPtrs, path, pgm);
+		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, path, pgm);
 		//Before returning, we need to:
 		//  -make funcptrs for all the slots
 		//  -name all the slots

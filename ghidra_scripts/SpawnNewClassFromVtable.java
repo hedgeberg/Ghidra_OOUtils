@@ -24,6 +24,7 @@ public class SpawnNewClassFromVtable extends GhidraScript {
 		newObjPath.ensureParentNamespacePath();
 		OOUtilsClass newClass = OOUtilsClass.newAutoClassFromVtable(currentAddress,
 				vtableLen, newObjPath, currentProgram);
-		println(String.format("New Obj: %s", newClass));
+		println(String.format("New Obj: %s, named %s", newClass, newClass.getName()));
+		newClass.tryClaimVtableSlots();
 	}
 }
