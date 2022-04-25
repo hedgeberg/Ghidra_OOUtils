@@ -8,7 +8,7 @@ import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeDependencyException;
 import ghidra.program.model.data.FunctionDefinitionDataType;
-
+import ghidra.util.InvalidNameException;
 import ghidra.util.Msg;
 
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
@@ -65,8 +65,14 @@ public class VFuncImpl {
 	public void updateSlotFunctionSignature() {
 		//TODO: see if we can remove this assert
 		assert(isOwnedByClass());
-		DataType currentSlotDef = dtm.getDataType(path.getClassStructCategoryPath(), getSlotName());
+		DataType currentSlotDef = getSlotDataType();
 		FunctionDefinitionDataType fsdt = new FunctionDefinitionDataType(func.getSignature());
+		try {
+			fsdt.setName(getSlotName());
+		} catch (InvalidNameException e1) {
+			Msg.error(fsdt, "How even??? Something's bad, contact dev pls");
+			return;
+		}
 		try {
 			dtm.replaceDataType(currentSlotDef, fsdt, false);
 		} catch (DataTypeDependencyException e) {
