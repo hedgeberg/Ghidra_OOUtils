@@ -16,6 +16,7 @@ public class UpdateVtableFunctionDefinitions extends GhidraScript {
 	protected void run() throws Exception {
 		OOUtilsPath path = OOUtilsPath.fromVtableAddress(currentAddress, currentProgram);
 		OOUtilsClass currentClass = new OOUtilsClass(path, currentProgram);
-		println(String.format("OOUtils fetched class definition for: %s", currentClass.getName()));
+		currentClass.updateClassVtableDefinitions();
+		println(String.format("OOUtils updated function definitions for: %s", currentClass.getName()));
 	}
 }

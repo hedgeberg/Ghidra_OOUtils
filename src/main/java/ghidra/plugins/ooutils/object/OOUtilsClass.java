@@ -60,6 +60,10 @@ public class OOUtilsClass {
 		return path.getClassNsString();
 	}
 	
+	public void updateClassVtableDefinitions() {
+		vt.updateVtableOwnedImplDefinitions();
+	}
+	
 	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, OOUtilsPath path,
 			Program pgm) throws DuplicateNameException, InvalidInputException {
 		CategoryPath catPath = path.getContainingCategoryPath();

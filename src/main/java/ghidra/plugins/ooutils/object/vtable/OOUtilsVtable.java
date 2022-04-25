@@ -2,6 +2,10 @@ package ghidra.plugins.ooutils.object.vtable;
 
 import java.lang.String;
 import java.util.Vector;
+import java.util.List;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
@@ -11,6 +15,7 @@ import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataTypeConflictHandler;
+import ghidra.program.model.data.DataTypeDependencyException;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Data;
@@ -24,6 +29,7 @@ import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
+import util.CollectionUtils;
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 import ghidra.plugins.ooutils.utils.Helpers;
 
@@ -59,6 +65,11 @@ public class OOUtilsVtable {
 		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
 		this.vtableInstance = listing.getDataAt(vtableStartAddress);
 		this.numPtrs = vtableDataType.getLength()/ptrWidth;
+	}
+	
+	void reloadVtableData() {
+		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
+		this.vtableInstance = listing.getDataAt(vtableStartAddress);
 	}
 	
 	public Boolean tryClaimSingleSlot(int index) {
@@ -105,11 +116,51 @@ public class OOUtilsVtable {
 		Msg.info(this, String.format("Successfully claimed ownership of %d funcs for class: %s", successes, path.getClassName()));
 	}
 	
+	public Stream<VFuncImpl> getVtableImplFuncsStream() {
+		return IntStream.range(0, numPtrs)
+				.mapToObj(
+						slot -> new VFuncImpl(getSlotReferencedAddress(slot), this, slot, pgm)
+						);
+	}
+	
+	public List<VFuncImpl> getVtableImplFuncs() {
+		return getVtableImplFuncsStream() 
+				.collect(Collectors.toList());
+	}
+	
+	public Stream<VFuncImpl> getOwnedVFuncImplsStream() {
+		return getVtableImplFuncsStream()
+				.filter(vfi -> vfi.isOwnedByClass());
+	}
+	
+	public List<VFuncImpl> getOwnedVFuncImpls() {
+		return getOwnedVFuncImplsStream()
+				.collect(Collectors.toList());
+	}
+	
 	public DataType getVtableDataType() {
 		return vtableDataType;
 	}
 	
-	public Boolean applyAtAddress() {
+	public void updateVtableOwnedImplDefinitions() {
+		//Updates virtual member slots *for owned member functions* -- functions not owned by this class are skipped
+		StructureDataType updatedVTableType = (StructureDataType) vtableDataType.clone(dtm);
+		int ptrSize = Helpers.getArchFuncPtrSize(pgm);
+		for(VFuncImpl vslot : CollectionUtils.asIterable(getOwnedVFuncImpls().iterator())) {
+			vslot.updateSlotFunctionSignature();
+			updatedVTableType.replaceAtOffset(vslot.getSlotOffset(), vslot.getPtrDataType(), ptrSize, vslot.getImplName(), "");
+		}
+		try {
+			dtm.replaceDataType(vtableDataType, updatedVTableType, false);
+		} catch (DataTypeDependencyException e) {
+			Msg.error(this, String.format("Could not update vtable @ %s", path.getClassStructDtmPathString()));
+			return;
+		}
+		reloadVtableData();
+		return;
+	}
+	
+	public Boolean createAtAddress() {
 		try {
 			listing.createData(vtableStartAddress, vtableDataType);
 		} catch (CodeUnitInsertionException | DataTypeConflictException e) {
@@ -131,6 +182,7 @@ public class OOUtilsVtable {
 			newDataType.replaceAtOffset(offset, slotDataType, slotDataType.getLength(), slotName, "");
 		}
 		vtableDataType.replaceWith(newDataType);
+		reloadVtableData();
 	}
 	
 	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, OOUtilsPath path, Program pgm) {
@@ -152,13 +204,17 @@ public class OOUtilsVtable {
 		//  -name all the slots
 		newTable.initialPopulateVtableStruct();
 		//  -apply the vtable to the address
-		Boolean result = newTable.applyAtAddress();
+		Boolean result = newTable.createAtAddress();
 		if (!result) {
 			Msg.error(OOUtilsVtable.class, "newAutoVtable failed to apply the vtable item");
 			//TODO: clean up dead structure & category paths we spawned.
 			return null;
 		}
 		return newTable;
+	}
+	
+	public static OOUtilsVtable newSingleVtable(Address startAddr, OOUtilsPath path, Program pgm) {
+		return null;
 	}
 
 }
