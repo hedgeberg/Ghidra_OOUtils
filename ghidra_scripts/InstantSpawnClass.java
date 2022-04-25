@@ -13,6 +13,7 @@ public class InstantSpawnClass extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
+		clearListing(currentAddress);
 		String classNameCombined = askString("Class Name", "What should the new class be named?");
 		OOUtilsPath newObjPath = new OOUtilsPath(classNameCombined, currentProgram);
 		newObjPath.ensureParentNamespacePath();

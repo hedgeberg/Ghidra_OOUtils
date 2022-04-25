@@ -1,4 +1,4 @@
-//TODO!! Increase the length of the OOUtils managed vtable at the current cursor location by 1 slot
+//TODO!! Reduce the length of the OOUtils managed vtable at the current cursor location by 1 slot
 //@author hedgeberg
 //@category OOUtils
 //@keybinding
@@ -7,7 +7,7 @@
 
 import ghidra.app.script.GhidraScript;
 
-public class AddVtableSlot extends GhidraScript {
+public class DeleteVtableSlot extends GhidraScript {
 
 	@Override
 	protected void run() throws Exception {
