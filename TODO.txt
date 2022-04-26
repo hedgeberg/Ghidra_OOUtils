@@ -1,0 +1,2 @@
+- Actually use instanceof to check cast safety
+- Vtable add/subtract/delete methods
