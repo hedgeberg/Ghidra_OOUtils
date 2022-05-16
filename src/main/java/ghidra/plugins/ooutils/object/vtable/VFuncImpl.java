@@ -10,9 +10,12 @@ import ghidra.program.model.data.DataTypeDependencyException;
 import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.util.InvalidNameException;
 import ghidra.util.Msg;
-
+import ghidra.util.task.TaskMonitor;
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 import ghidra.plugins.ooutils.utils.Helpers;
+import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.RefType;
 
 public class VFuncImpl {
 	Program pgm;
@@ -23,6 +26,7 @@ public class VFuncImpl {
 	int slotNum;
 	OOUtilsPath path;
 	DataTypeManager dtm;
+	ReferenceManager rm;
 	
 	public VFuncImpl(Address addr, OOUtilsVtable owner, int slotNum, Program pgm) {
 		this.funcAddr = addr;
@@ -34,6 +38,7 @@ public class VFuncImpl {
 		this.path = owner.path;
 		this.func = lst.getFunctionAt(addr);
 		this.dtm = pgm.getDataTypeManager();
+		this.rm = pgm.getReferenceManager();
 	}
 	
 	public String getImplName() {
@@ -57,9 +62,25 @@ public class VFuncImpl {
 		return slotNum * ptrWidth;
 	}
 	
+	public Address getSlotResidentAddress() {
+		return owner.getVtableStartAddress().add(getSlotOffset());
+	}
+	
 	public Boolean isOwnedByClass() {
 		//returns true if this function is a member of the class's namespace
 		return func.getParentNamespace() == path.getClassNamespace();
+	}
+	
+	public void clearSlotRef() {
+		rm.removeAllReferencesFrom(getSlotResidentAddress());
+	}
+	
+	public void makeSlotRef() {
+		rm.addMemoryReference(getSlotResidentAddress(), funcAddr, RefType.DATA, SourceType.USER_DEFINED, 0);
+	}
+	
+	public Boolean destroy(TaskMonitor mon) {
+		return dtm.remove(getSlotDataType(), mon);
 	}
 	
 	public void updateSlotFunctionSignature() {

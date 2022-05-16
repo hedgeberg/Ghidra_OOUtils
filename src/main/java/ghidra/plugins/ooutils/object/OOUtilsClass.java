@@ -15,6 +15,7 @@ import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.VariableSizeException;
 import ghidra.program.database.symbol.SymbolManager;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
@@ -24,6 +25,7 @@ import ghidra.program.model.listing.GhidraClass;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
+import ghidra.util.task.TaskMonitor;
 
 public class OOUtilsClass {
 	
@@ -60,8 +62,34 @@ public class OOUtilsClass {
 		return path.getClassNsString();
 	}
 	
+	public Address getVtableStartAddress() {
+		return vt.getVtableStartAddress();
+	}
+	
+	public void clearForNewSlot() {
+		vt.clearForNewSlot();
+	}
+	
+	public OOUtilsVtable getOOUtilsVtable() {
+		return vt;
+	}
+	
+	public OOUtilsPath getOOUtilsPath() {
+		return path;
+	}
+	
 	public void updateClassVtableDefinitions() {
 		vt.updateVtableOwnedImplDefinitions();
+	}
+	
+	public void growVtableSingle() throws VariableSizeException {
+		//Add a single slot to the vtable
+		vt.growVtableSingle();
+	}
+	
+	public void shrinkVtableSingle(TaskMonitor mon) throws VariableSizeException {
+		//Remove a single slot from the vtable
+		vt.shrinkVtableSingle(mon);
 	}
 	
 	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, OOUtilsPath path,

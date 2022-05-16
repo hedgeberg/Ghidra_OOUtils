@@ -8,6 +8,7 @@ import java.util.stream.Stream;
 import java.util.stream.Collectors;
 
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.StructureDataType;
@@ -18,6 +19,7 @@ import ghidra.program.model.data.DataTypeConflictHandler;
 import ghidra.program.model.data.DataTypeDependencyException;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.listing.CircularDependencyException;
+import ghidra.program.model.listing.VariableSizeException;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Listing;
@@ -29,6 +31,7 @@ import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
+import ghidra.util.task.TaskMonitor;
 import util.CollectionUtils;
 import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 import ghidra.plugins.ooutils.utils.Helpers;
@@ -41,7 +44,6 @@ public class OOUtilsVtable {
 	int numPtrs;
 	int ptrWidth;
 	DataType vtableDataType;
-	Structure vtableStruct;
 	DataTypeManager dtm;
 	Listing listing;
 	ReferenceManager rm;
@@ -49,6 +51,7 @@ public class OOUtilsVtable {
 	Program pgm;
 	OOUtilsPath path;
 	Data vtableInstance;
+	StructureDataType updatingDataType;
 	
 	public OOUtilsVtable(Address start, OOUtilsPath path, Program pgm){
 		//Assumes that a vtable that has been created by OOUtils already exists for this type. 
@@ -65,6 +68,7 @@ public class OOUtilsVtable {
 		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
 		this.vtableInstance = listing.getDataAt(vtableStartAddress);
 		this.numPtrs = vtableDataType.getLength()/ptrWidth;
+		this.updatingDataType = null;
 	}
 	
 	void reloadVtableData() {
@@ -97,9 +101,22 @@ public class OOUtilsVtable {
 	public Address getSlotReferencedAddress(int slotNumber) {
 		Data slotInstance = vtableInstance.getComponent(slotNumber);
 		Reference[] slotRefArray = slotInstance.getReferencesFrom();
-		assert(slotRefArray.length == 1);
-		Address toAddr = slotRefArray[0].getToAddress();
-		return toAddr;
+		if(slotRefArray.length == 0) {
+			try {
+				Address slotAddr = slotInstance.getAddress();
+				Address refAddr = slotAddr.getAddressSpace().getAddress(slotInstance.getVarLengthInt(0, ptrWidth));
+				return refAddr;
+			} catch (Exception e) {
+				//TODO get rid of this mess, jfc
+				//HACK kluuuuuudge
+				assert(false);
+			}
+			return null;
+		} else {
+			assert(slotRefArray.length == 1);
+			Address toAddr = slotRefArray[0].getToAddress();
+			return toAddr;
+		}
 	}
 	
 	public Function getSlotReferencedFunction(int slotNumber) {
@@ -138,8 +155,95 @@ public class OOUtilsVtable {
 				.collect(Collectors.toList());
 	}
 	
+	private VFuncImpl getVFuncImplBySlotNumber(int slotNumber) {
+		assert((slotNumber >= 0) && (slotNumber < numPtrs));
+		return getVtableImplFuncs().get(slotNumber);
+	}
+	
 	public DataType getVtableDataType() {
 		return vtableDataType;
+	}
+	
+	public Address getVtableStartAddress() {
+		return vtableStartAddress;
+	}
+	
+	public int getVtableSize() {
+		return numPtrs * ptrWidth;
+	}
+	
+	private void insertSingleSlot(int slotNum) {
+		//Private method to inject a new vfunc type into the selected vtable slot. rquires that the vtable already has space for it.
+		int offset = slotNum * ptrWidth;
+		String slotName = String.format("slot%d", slotNum);
+		FunctionDefinitionDataType slotFuncDef = new FunctionDefinitionDataType(path.getClassStructCategoryPath(), slotName);
+		dtm.addDataType(slotFuncDef, DataTypeConflictHandler.DEFAULT_HANDLER);
+		DataType slotDataType = dtm.getPointer(slotFuncDef);
+		updatingDataType.replaceAtOffset(offset, slotDataType, slotDataType.getLength(), slotName, "");
+	}
+	
+	private void startDTUpdate() {
+		//Private method that populates the updatingDataType field, indicating a DataType update has started
+		updatingDataType = (StructureDataType) vtableDataType.clone(dtm);
+	}
+	
+	private void endDTUpdate() {
+		//Private method that propogates all changes made during the DT update to the database, clears the updating field, and refreshes the struct
+		vtableDataType.replaceWith(updatingDataType);
+		updatingDataType = null;
+		reloadVtableData();
+	}
+	
+	public void clearForNewSlot() {
+		Address afterVtable = vtableInstance.getAddress().add(getVtableSize());
+		listing.clearCodeUnits(afterVtable, afterVtable.add(ptrWidth - 1), true); //-1 because clearCodeUnits is inclusive
+	}
+	
+	public void growVtableSingle() throws VariableSizeException {
+		//Add a single slot to the vtable
+		
+		//Step 1: Check if there's data after this slot at the physical vtable offset, and throw an exception if so
+		Address toBeConsumedStart = vtableInstance.getAddress();
+		toBeConsumedStart = toBeConsumedStart.add(vtableDataType.getLength());
+		Address toBeConsumedEnd = toBeConsumedStart.add(ptrWidth - 1); //-1 because AddressSet is inclusive
+		AddressSet toBeConsumed = new AddressSet(toBeConsumedStart, toBeConsumedEnd);
+		for(Data elem : listing.getData(toBeConsumed, true)) {
+			if(elem.isDefined()) {
+				throw new VariableSizeException(String.format("Data exists @ {}",elem.getAddress()));
+			}
+		}
+		//Step 2: add field to vtable struct
+		startDTUpdate();
+		updatingDataType.growStructure(ptrWidth);
+		insertSingleSlot(numPtrs);
+		numPtrs += 1;
+		endDTUpdate();
+		//Step 3: fix up references
+		VFuncImpl slotFunc = getVFuncImplBySlotNumber(numPtrs - 1);
+		slotFunc.clearSlotRef();
+		slotFunc.makeSlotRef();
+		tryClaimSingleSlot(numPtrs - 1);
+	}
+	
+	public void shrinkVtableSingle(TaskMonitor mon) throws VariableSizeException {
+		//Remove a single slot from the vtable
+		
+		//Step 1: ensure we aren't trying to subtract the last vtable slot
+		if(numPtrs == 1) {
+			throw new VariableSizeException(String.format("Can't shrink Vtable with size 1"));
+		}
+		assert(numPtrs >= 2);
+		//Step 2: shrink Vtable
+		int toBeDestroyed = numPtrs - 1;
+		VFuncImpl slotFunc = getVFuncImplBySlotNumber(toBeDestroyed);
+		slotFunc.clearSlotRef();
+		startDTUpdate();
+		updatingDataType.deleteAtOffset(toBeDestroyed * ptrWidth);
+		endDTUpdate();
+		numPtrs -= 1;
+		//Step 3: clean up slot's vfunc data type
+		Boolean result = slotFunc.destroy(mon);
+		assert(result);
 	}
 	
 	public void updateVtableOwnedImplDefinitions() {
@@ -172,17 +276,11 @@ public class OOUtilsVtable {
 	}
 	
 	public void initialPopulateVtableStruct()  {
-		StructureDataType newDataType = (StructureDataType) vtableDataType.clone(dtm);
+		startDTUpdate();
 		for(int slot = 0; slot < numPtrs; slot++) {
-			int offset = slot * ptrWidth;
-			String slotName = String.format("slot%d", slot);
-			FunctionDefinitionDataType slotFuncDef = new FunctionDefinitionDataType(path.getClassStructCategoryPath(), slotName);
-			dtm.addDataType(slotFuncDef, DataTypeConflictHandler.DEFAULT_HANDLER);
-			DataType slotDataType = dtm.getPointer(slotFuncDef);
-			newDataType.replaceAtOffset(offset, slotDataType, slotDataType.getLength(), slotName, "");
+			insertSingleSlot(slot);
 		}
-		vtableDataType.replaceWith(newDataType);
-		reloadVtableData();
+		endDTUpdate();
 	}
 	
 	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, OOUtilsPath path, Program pgm) {
