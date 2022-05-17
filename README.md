@@ -1,7 +1,7 @@
 OOUtils
 -------
 
-A Ghidra extension that aims to make reverse engineering of object-oriented langauges easier. Currently in *very* early dev. 
+A Ghidra extension that aims to make reverse engineering of object-oriented langauges easier. Currently in unstable alpha.  
 
 To build, make sure your GHIDRA_HOME environment variable is set to the version of Ghidra you're going to install this in, then just run:
 
@@ -11,13 +11,18 @@ gradle buildExtension
 
 The installable zip will be in the `dist` folder. Install like any other ghidra plugin. 
 
-Currently, only the SpawnNewClassFromVtable and UpdateVtableFunctionDefinitions scripts should be used. 
-* To use the SpawnNewClassFromVtable script, clear all the data occupying a vtable, click on the start of the vtable in the listing view, and then run the script. You'll be asked to provide a name for the class (can include preceding namespaces), and a number of pointers. If everything goes well, the class symbol, the vtable struct, the class struct, etc, will all be created for you in the symbol tree and in the "OOUtils_Managed" folder in the datatype manager. 
-* To use the UpdateVtableFunctionDefinitions script, click on the start of a vtable created with OOUtils, then run the script from the script manager or some hotkey. Virtual function definitions that we can safely assume are owned exclusively by the vtable's class will be updated for you!
-    - In order to keep things safe, this will only update for functions that are referenced by the vtable and whose namespace is the same as the class namespace. You can add non-automatically-claimed functions to the namespace manually if you want to make that function pointer automatically update.
+Current valid scripts are:
+ - *InstantSpawnClass.java* (spawns a 1-slot vtable for you, just needs a name)
+ - *SpawnNewClassFromVtable.java* (spawns an n-slot vtable for you, given n and a name)
+ - *GrowVtableByOne.java* (Does what it says on the tin)
+ - *ShrinkVtableByOne.java* (Does what it says on the tin)
+ - *RenameOOUtilsClass.java* (Renames the class, class struct datatype, etc)
+ - *UpdateVtableFunctionDefintions.java* (Iterates through vfuncs and updates their vtable function pointer type defintions)
+
+To use any of these scripts, click on the start of the vtable and launch the script. It's that easy! Should hold your hand from there, if anything is unclear please submit a bug report! In order to keep things safe, the UpdateVtableFunctionDefinitions script will only update for functions that are referenced by the vtable and whose namespace is the same as the class namespace. You can add non-automatically-claimed functions to the namespace manually if you want to make that function pointer automatically update.
 
 Next steps as of the last time this readme was updated:
-- Adding/subtracting vtable slots
+- 
 - Automatic constructor location using data references
 - Some sort of basic UI
 

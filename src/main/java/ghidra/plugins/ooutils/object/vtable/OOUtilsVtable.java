@@ -13,11 +13,11 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.FunctionDefinitionDataType;
+import ghidra.program.model.data.Category;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.DataTypeConflictHandler;
 import ghidra.program.model.data.DataTypeDependencyException;
-import ghidra.program.model.data.Structure;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.VariableSizeException;
 import ghidra.program.model.listing.Data;
@@ -28,6 +28,7 @@ import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.util.InvalidNameException;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -44,6 +45,7 @@ public class OOUtilsVtable {
 	int numPtrs;
 	int ptrWidth;
 	DataType vtableDataType;
+	Category vtableChildrenCategory;
 	DataTypeManager dtm;
 	Listing listing;
 	ReferenceManager rm;
@@ -68,6 +70,7 @@ public class OOUtilsVtable {
 		this.vtableDataType = dtm.getDataType(path.getClassStructCategoryPath(), vtableTypeName);
 		this.vtableInstance = listing.getDataAt(vtableStartAddress);
 		this.numPtrs = vtableDataType.getLength()/ptrWidth;
+		this.vtableChildrenCategory = dtm.getCategory(path.getClassStructCategoryPath());
 		this.updatingDataType = null;
 	}
 	
@@ -275,6 +278,30 @@ public class OOUtilsVtable {
 		return true;
 	}
 	
+	public Boolean changeClassName(String newName, TaskMonitor mon) throws InvalidNameException {
+
+		//1d: check for a conflicting class datatype
+		if(dtm.getDataType(path.getContainingCategoryPath(), newName) != null) {
+			return false;
+		}
+		//1e: check for a conflicting class category
+		path.changeClassName(newName, mon);
+		if(dtm.containsCategory(path.getClassStructCategoryPath())) {
+			path.revertClassName();
+			return false;
+		}
+		path.revertClassName();
+		//Step 2: Now we should be able to do this without any exceptions. 
+		//2a: change the name of the folder containing all the class vfuncs
+		try {
+			vtableChildrenCategory.setName(newName);
+		} catch (DuplicateNameException  e) {
+			// this *should* be impossible thanks to our checks
+			assert(false);
+		}
+		return true;
+	}
+	
 	public void initialPopulateVtableStruct()  {
 		startDTUpdate();
 		for(int slot = 0; slot < numPtrs; slot++) {
@@ -294,8 +321,13 @@ public class OOUtilsVtable {
 		String vtableTypeName = "vftable";
 		StructureDataType vtableStruct = new StructureDataType(catPath, vtableTypeName, vtLength, dtm);
 		dtm.addDataType(vtableStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
-		
+		//Have to create the category manually so that dtm.getCategory doesn't return a null pointer. 
+		dtm.createCategory(path.getClassStructCategoryPath());
 		//Once that's been added, we're safe to actually construct our class
+		Address endAddr = startAddr.add(vtLength-1);
+		//TODO: need to check for data earlier, then bail out. 
+		pgm.getListing().clearCodeUnits(startAddr, endAddr, true);
+		pgm.getReferenceManager().removeAllReferencesFrom(startAddr, endAddr);
 		OOUtilsVtable newTable = new OOUtilsVtable(startAddr, path, pgm);
 		//Before returning, we need to:
 		//  -make funcptrs for all the slots
@@ -314,5 +346,6 @@ public class OOUtilsVtable {
 	public static OOUtilsVtable newSingleVtable(Address startAddr, OOUtilsPath path, Program pgm) {
 		return null;
 	}
+
 
 }

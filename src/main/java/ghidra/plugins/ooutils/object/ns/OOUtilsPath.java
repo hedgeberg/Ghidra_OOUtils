@@ -7,6 +7,7 @@ import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.exception.InvalidInputException;
+import ghidra.util.task.TaskMonitor;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.plugins.ooutils.utils.Helpers;
@@ -20,6 +21,7 @@ public class OOUtilsPath {
 	String combinedNsAndClassName;
 	String className;
 	String nsFullName;
+	String oldClassName;
 	Vector<String> nsPieces;
 	
 	public OOUtilsPath(String combinedNsAndClassName, Program pgm) {
@@ -63,6 +65,16 @@ public class OOUtilsPath {
 	
 	public String getClassName() {
 		return className;
+	}
+	
+	public void changeClassName(String newName, TaskMonitor mon) {
+		oldClassName = className;
+		className = newName;
+	}
+	
+	public void revertClassName() {
+		assert(oldClassName != null);
+		className = oldClassName;
 	}
 	
 	public String getContainingDtmPathString() {

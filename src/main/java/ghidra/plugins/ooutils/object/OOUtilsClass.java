@@ -9,6 +9,7 @@ import ghidra.plugins.ooutils.object.ns.OOUtilsPath;
 
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataTypeManager;
+import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeConflictHandler;
 import ghidra.program.model.data.StructureDataType;
@@ -21,7 +22,9 @@ import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.GhidraClass;
+import ghidra.util.InvalidNameException;
 import ghidra.util.Msg;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -33,6 +36,7 @@ public class OOUtilsClass {
 	Listing listing;
 	DataTypeManager dtm;
 	GhidraClass classNs;
+	Structure classStruct;
 	Program pgm;
 	OOUtilsPath path;
 	OOUtilsVtable vt;
@@ -52,6 +56,9 @@ public class OOUtilsClass {
 		assert(vftableSymbols.size() == 1);
 		Symbol vtableSymbol = vftableSymbols.get(0);
 		this.vt = new OOUtilsVtable(vtableSymbol.getAddress(), path, pgm);
+		DataType toCast = dtm.getDataType(path.getContainingCategoryPath(), path.getClassName());
+		assert(toCast instanceof Structure);
+		this.classStruct = (Structure) toCast;
 	}
 	
 	public void tryClaimVtableSlots() {
@@ -92,6 +99,44 @@ public class OOUtilsClass {
 		vt.shrinkVtableSingle(mon);
 	}
 	
+	public Boolean changeClassName(String newName, TaskMonitor mon) throws InvalidInputException, InvalidNameException {
+		//Change the name (note: not the ns/path) of a class
+		//Step 1: verify we can actually make the change. Requires that there isn't already a class with this same name in this same namespace
+		//1a: check for a conflicting class symbol
+		if(st.getClassSymbol(newName, path.getParentNamespace()) != null) {
+			return false;
+		}
+		//1b: check for a conflicting namespace
+		if(st.getNamespace(newName, path.getParentNamespace()) != null) {
+			return false;
+		}
+		//1c: check for a conflicting symbol
+		if(st.getSymbols(newName, path.getParentNamespace()).size() != 0) {
+			return false;
+		}
+		//Step 1 continues in vt.ChangeClassName
+		if(!vt.changeClassName(newName, mon)) {
+			return false;
+		}
+		//2b: rename the class struct
+		try {
+			classStruct.setName(newName);
+		} catch (DuplicateNameException e) {
+			//this *should* be impossible to hit thanks to our checks
+			assert(false);
+		}
+		//Step 3: rename the class in the symbol tree
+		Symbol classSym = st.getClassSymbol(classNs.getName(), path.getParentNamespace());
+		try {
+			classSym.setName(newName, SourceType.USER_DEFINED);
+		} catch (DuplicateNameException e) {
+			//this *should* be impossible to hit thanks to our checks
+			assert(false);
+		}
+		path.changeClassName(newName, mon);
+		return true;
+	}
+	
 	public static OOUtilsClass newAutoClassFromVtable(Address vtableStart, int numVtableMembers, OOUtilsPath path,
 			Program pgm) throws DuplicateNameException, InvalidInputException {
 		CategoryPath catPath = path.getContainingCategoryPath();
@@ -113,6 +158,12 @@ public class OOUtilsClass {
 		StructureDataType newClassStruct = new StructureDataType(catPath, className, Helpers.getArchFuncPtrSize(pgm)*2);
 		newClassStruct.replaceAtOffset(0, dtm.getPointer(vtableType), dtm.getPointer(vtableType).getLength(), "_vtbl", "");
 		dtm.addDataType(newClassStruct, DataTypeConflictHandler.DEFAULT_HANDLER);
+		OOUtilsClass newClass = new OOUtilsClass(path, pgm);
+		return newClass;
+	}
+	
+	public static OOUtilsClass fromVtableAddress(Address vtableAddress, Program pgm) {
+		OOUtilsPath path = OOUtilsPath.fromVtableAddress(vtableAddress, pgm);
 		OOUtilsClass newClass = new OOUtilsClass(path, pgm);
 		return newClass;
 	}
