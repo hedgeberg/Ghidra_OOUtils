@@ -10,7 +10,6 @@ import java.util.stream.Collectors;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.data.DataType;
-import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.FunctionDefinitionDataType;
 import ghidra.program.model.data.Category;
@@ -152,6 +151,7 @@ public class OOUtilsVtable {
 		return getVtableImplFuncsStream()
 				.filter(vfi -> vfi.isOwnedByClass());
 	}
+
 	
 	public List<VFuncImpl> getOwnedVFuncImpls() {
 		return getOwnedVFuncImplsStream()
@@ -270,7 +270,7 @@ public class OOUtilsVtable {
 	public Boolean createAtAddress() {
 		try {
 			listing.createData(vtableStartAddress, vtableDataType);
-		} catch (CodeUnitInsertionException | DataTypeConflictException e) {
+		} catch (CodeUnitInsertionException e) {
 			Msg.error(this, "Could not spawn new Vtable at the desired location");
 			return false;
 		}
@@ -309,6 +309,11 @@ public class OOUtilsVtable {
 		}
 		endDTUpdate();
 	}
+	
+	// struct foo_t {
+	//		void * foo; 
+	//		void * bar;
+	// }
 	
 	public static OOUtilsVtable newAutoVtable(Address startAddr, int numPtrs, OOUtilsPath path, Program pgm) {
 		CategoryPath catPath = path.getClassStructCategoryPath();
