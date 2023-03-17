@@ -100,13 +100,19 @@ public class OOUtilsVtable {
 		return true;
 	}
 	
+	public Address getPointerToSlot(int slotNumber) {
+		return vtableStartAddress.add(slotNumber * ptrWidth);
+	}
+	
 	public Address getSlotReferencedAddress(int slotNumber) {
 		Data slotInstance = vtableInstance.getComponent(slotNumber);
+		//Data slotInstance = listing.getDataAt(getPointerToSlot(slotNumber)) ;
 		Reference[] slotRefArray = slotInstance.getReferencesFrom();
 		if(slotRefArray.length == 0) {
 			try {
 				Address slotAddr = slotInstance.getAddress();
-				Address refAddr = slotAddr.getAddressSpace().getAddress(slotInstance.getVarLengthInt(0, ptrWidth));
+				//Address refAddr = slotAddr.getAddressSpace().getAddress(slotInstance.getVarLengthInt(0, ptrWidth));
+				Address refAddr = slotAddr.getAddressSpace().getAddress(slotInstance.getInt(0));
 				return refAddr;
 			} catch (Exception e) {
 				//TODO get rid of this mess, jfc
@@ -187,7 +193,8 @@ public class OOUtilsVtable {
 	
 	private void startDTUpdate() {
 		//Private method that populates the updatingDataType field, indicating a DataType update has started
-		updatingDataType = (StructureDataType) vtableDataType.clone(dtm);
+		updatingDataType = (StructureDataType) vtableDataType.copy(dtm);
+		//updatingDataType = vtableDataType.copy(dtm);
 	}
 	
 	private void endDTUpdate() {
@@ -222,7 +229,10 @@ public class OOUtilsVtable {
 		numPtrs += 1;
 		endDTUpdate();
 		//Step 3: fix up references
-		VFuncImpl slotFunc = getVFuncImplBySlotNumber(numPtrs - 1);
+		//NOTE: hey idiot, you can't do the below because the reference that makeSlotRef depends on isn't valid. 
+		//VFuncImpl slotFunc = getVFuncImplBySlotNumber(numPtrs - 1);
+		//Don't get smart and try to make that change again. 
+		VFuncImpl slotFunc = new VFuncImpl(getSlotReferencedAddress(numPtrs - 1), this, numPtrs -1, pgm);
 		slotFunc.clearSlotRef();
 		slotFunc.makeSlotRef();
 		tryClaimSingleSlot(numPtrs - 1);
@@ -251,7 +261,7 @@ public class OOUtilsVtable {
 	
 	public void updateVtableOwnedImplDefinitions() {
 		//Updates virtual member slots *for owned member functions* -- functions not owned by this class are skipped
-		StructureDataType updatedVTableType = (StructureDataType) vtableDataType.clone(dtm);
+		StructureDataType updatedVTableType = (StructureDataType) vtableDataType.copy(dtm);
 		int ptrSize = Helpers.getArchFuncPtrSize(pgm);
 		for(VFuncImpl vslot : CollectionUtils.asIterable(getOwnedVFuncImpls().iterator())) {
 			vslot.updateSlotFunctionSignature();
